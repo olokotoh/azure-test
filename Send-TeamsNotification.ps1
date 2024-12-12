@@ -1,65 +1,124 @@
-#some comment here 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
     [string]$WebhookUrl,
     
-    [Parameter(Mandatory=$true)]
-    [string]$Status
+    [Parameter(Mandatory=$false)]
+    [string]$CustomMessage,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Status = "Deployment Completed",
+    
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("Success", "Warning", "Error")]
+    [string]$NotificationType = "Success"
 )
 
-try {
-    # Get pipeline variables
-    $ReleaseName = if ($env:RELEASE_RELEASENAME) { $env:RELEASE_RELEASENAME } else { "Unknown Release" }
-    $EnvironmentName = if ($env:RELEASE_ENVIRONMENTNAME) { $env:RELEASE_ENVIRONMENTNAME } else { "Unknown Environment" }
-    $RequestedBy = if ($env:RELEASE_REQUESTEDFOR) { $env:RELEASE_REQUESTEDFOR } else { "Unknown User" }
-    $ProjectName = if ($env:SYSTEM_TEAMPROJECT) { $env:SYSTEM_TEAMPROJECT } else { "Unknown Project" }
-    $ReleaseUrl = if ($env:RELEASE_RELEASEWEBURL) { $env:RELEASE_RELEASEWEBURL } else { "" }
+# Function to get Azure DevOps pipeline variables
+function Get-PipelineVariables {
+    return @{
+        ReleaseName = $env:RELEASE_RELEASENAME ?? "$(Release.ReleaseName)"
+        EnvironmentName = $env:RELEASE_ENVIRONMENTNAME ?? "$(Release.EnvironmentName)"
+        RequestedBy = $env:RELEASE_REQUESTEDFOR ?? "$(Release.RequestedFor)"
+        ProjectName = $env:SYSTEM_TEAMPROJECT ?? "$(System.TeamProject)"
+        ReleaseUrl = $env:RELEASE_RELEASEWEBURL ?? "$(Release.ReleaseWebURL)"
+    }
+}
 
-    # Create Teams message payload
-    $payload = @{
-        text = "Release notification: $ReleaseName deployed to $EnvironmentName. $Status."
-        summary = "Azure DevOps Release Notification"
-        sections = @(
+# Function to get color based on notification type 1
+function Get-ThemeColor {
+    param([string]$Type)
+    
+    switch ($Type) {
+        "Success" { return "00ff00" }
+        "Warning" { return "ffff00" }
+        "Error" { return "ff0000" }
+        default { return "0078D7" }
+    }
+}
+
+# Function to create Teams message payload
+function New-TeamsPayload {
+    param(
+        [hashtable]$Variables,
+        [string]$Status,
+        [string]$CustomMessage,
+        [string]$NotificationType
+    )
+    
+    $defaultMessage = "Release notification: $($Variables.ReleaseName) deployed to $($Variables.EnvironmentName). $Status."
+    $messageText = if ($CustomMessage) { $CustomMessage } else { $defaultMessage }
+    
+    return @{
+        type = "message"
+        attachments = @(
             @{
-                activityTitle = "Release: $ReleaseName"
-                activitySubtitle = "Environment: $EnvironmentName"
-                facts = @(
-                    @{ name = "Status"; value = $Status }
-                    @{ name = "Triggered by"; value = $RequestedBy }
-                    @{ name = "Project"; value = $ProjectName }
-                )
-                markdown = $true
+                contentType = "application/vnd.microsoft.card.adaptive"
+                content = @{
+                    type = "AdaptiveCard"
+                    version = "1.2"
+                    body = @(
+                        @{
+                            type = "TextBlock"
+                            text = $messageText
+                            wrap = $true
+                            weight = "bolder"
+                            size = "medium"
+                        }
+                        @{
+                            type = "FactSet"
+                            facts = @(
+                                @{
+                                    title = "Status"
+                                    value = $Status
+                                }
+                                @{
+                                    title = "Environment"
+                                    value = $Variables.EnvironmentName
+                                }
+                                @{
+                                    title = "Triggered by"
+                                    value = $Variables.RequestedBy
+                                }
+                                @{
+                                    title = "Project"
+                                    value = $Variables.ProjectName
+                                }
+                            )
+                        }
+                    )
+                    actions = @(
+                        @{
+                            type = "Action.OpenUrl"
+                            title = "View Release"
+                            url = $Variables.ReleaseUrl
+                        }
+                    )
+                }
             }
         )
     }
+}
 
-    # Add release URL if available
-    if ($ReleaseUrl) {
-        $payload.sections[0].Add("potentialAction", @(
-            @{
-                "@type" = "OpenUri"
-                name = "View Release"
-                targets = @(
-                    @{ os = "default"; uri = $ReleaseUrl }
-                )
-            }
-        ))
-    }
-
-    # Convert to JSON
-    $jsonPayload = $payload | ConvertTo-Json -Depth 10
-
-    Write-Output "Sending notification to Teams..."
-    Write-Output "Payload: $jsonPayload"
-
-    # Send to Teams
-    $result = Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType 'application/json' -Body $jsonPayload
-    Write-Output "Successfully sent Teams notification"
+# Main execution
+try {
+    Write-Host "Starting Teams notification script..."
     
-    if ($result) {
-        Write-Output "Teams response: $result"
-    }
+    # Get pipeline variables
+    $variables = Get-PipelineVariables
+    
+    # Create and convert payloads
+    $payload = New-TeamsPayload -Variables $variables -Status $Status -CustomMessage $CustomMessage -NotificationType $NotificationType
+    $jsonPayload = $payload | ConvertTo-Json -Depth 10 -Compress
+    
+    # Log payload for troubleshooting (mask webhook URL)
+    $logPayload = $jsonPayload -replace $WebhookUrl, "WEBHOOK_URL_REDACTED"
+    Write-Host "Payload: $logPayload"
+    
+    # Send notification
+    $result = Invoke-RestMethod -Uri $WebhookUrl -Method Post -ContentType 'application/json' -Body $jsonPayload
+    Write-Host "Successfully sent Teams notification"
+    Write-Host "Response: $result"
 }
 catch {
     Write-Error "Failed to send Teams notification: $_"
