@@ -6,7 +6,7 @@ steps:
   - task: CopyFiles@2
     inputs:
       SourceFolder: 'scripts'
-      Contents: '**/*.ps1'
+      Contents: '**/*.ps'
       TargetFolder: '$(Build.ArtifactStagingDirectory)/scripts'
   - task: PublishBuildArtifacts@1
     inputs:
