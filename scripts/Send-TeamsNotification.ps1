@@ -11,24 +11,25 @@ param(
     
     [Parameter(Mandatory=$false)]
     [ValidateSet("Success", "Warning", "Error")]
-    [string]$NotificationType = "Success"
+    [string]$NotificationType = "Success",
+    
+    [Parameter(Mandatory=$true)]
+    [string]$ReleaseName,
+
+    [Parameter(Mandatory=$true)]
+    [string]$EnvironmentName,
+
+    [Parameter(Mandatory=$true)]
+    [string]$RequestedBy,
+
+    [Parameter(Mandatory=$true)]
+    [string]$ProjectName,
+
+    [Parameter(Mandatory=$true)]
+    [string]$ReleaseUrl
 )
 
-# Function to get Azure DevOps pipeline variables
-function Get-PipelineVariables {
-    return @{
-      
-
-        ReleaseName = if ($env:RELEASE_RELEASENAME) { $env:RELEASE_RELEASENAME } else { "$(Release.ReleaseName)" }
-        EnvironmentName = if ($env:RELEASE_ENVIRONMENTNAME) { $env:RELEASE_ENVIRONMENTNAME } else { "$(Release.EnvironmentName)" }
-        RequestedBy = if ($env:RELEASE_REQUESTEDFOR) { $env:RELEASE_REQUESTEDFOR } else { "$(Release.RequestedFor)" }
-        ProjectName = if ($env:SYSTEM_TEAMPROJECT) { $env:SYSTEM_TEAMPROJECT } else { "$(System.TeamProject)" }
-        ReleaseUrl = if ($env:RELEASE_RELEASEWEBURL) { $env:RELEASE_RELEASEWEBURL } else { "$(Release.ReleaseWebURL)" }
-
-    }
-}
-
-# Function to get color based on notification type 1
+# Function to get color based on notification type
 function Get-ThemeColor {
     param([string]$Type)
     
@@ -43,13 +44,16 @@ function Get-ThemeColor {
 # Function to create Teams message payload
 function New-TeamsPayload {
     param(
-        [hashtable]$Variables,
+        [string]$ReleaseName,
+        [string]$EnvironmentName,
+        [string]$RequestedBy,
+        [string]$ProjectName,
+        [string]$ReleaseUrl,
         [string]$Status,
-        [string]$CustomMessage,
-        [string]$NotificationType
+        [string]$CustomMessage
     )
     
-    $defaultMessage = "Release notification: $($Variables.ReleaseName) deployed to $($Variables.EnvironmentName). $Status."
+    $defaultMessage = "Release notification: $ReleaseName deployed to $EnvironmentName. $Status."
     $messageText = if ($CustomMessage) { $CustomMessage } else { $defaultMessage }
     
     return @{
@@ -71,22 +75,10 @@ function New-TeamsPayload {
                         @{
                             type = "FactSet"
                             facts = @(
-                                @{
-                                    title = "Status"
-                                    value = $Status
-                                }
-                                @{
-                                    title = "Environment"
-                                    value = $Variables.EnvironmentName
-                                }
-                                @{
-                                    title = "Triggered by"
-                                    value = $Variables.RequestedBy
-                                }
-                                @{
-                                    title = "Project"
-                                    value = $Variables.ProjectName
-                                }
+                                @{ title = "Status"; value = $Status }
+                                @{ title = "Environment"; value = $EnvironmentName }
+                                @{ title = "Triggered by"; value = $RequestedBy }
+                                @{ title = "Project"; value = $ProjectName }
                             )
                         }
                     )
@@ -94,7 +86,7 @@ function New-TeamsPayload {
                         @{
                             type = "Action.OpenUrl"
                             title = "View Release"
-                            url = $Variables.ReleaseUrl
+                            url = $ReleaseUrl
                         }
                     )
                 }
@@ -107,11 +99,10 @@ function New-TeamsPayload {
 try {
     Write-Host "Starting Teams notification script..."
     
-    # Get pipeline variables
-    $variables = Get-PipelineVariables
-    
-    # Create and convert payloads
-    $payload = New-TeamsPayload -Variables $variables -Status $Status -CustomMessage $CustomMessage -NotificationType $NotificationType
+    # Create payload
+    $payload = New-TeamsPayload -ReleaseName $ReleaseName -EnvironmentName $EnvironmentName -RequestedBy $RequestedBy `
+                                -ProjectName $ProjectName -ReleaseUrl $ReleaseUrl -Status $Status `
+                                -CustomMessage $CustomMessage
     $jsonPayload = $payload | ConvertTo-Json -Depth 10 -Compress
     
     # Log payload for troubleshooting (mask webhook URL)
