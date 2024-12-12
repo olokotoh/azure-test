@@ -17,11 +17,14 @@ param(
 # Function to get Azure DevOps pipeline variables
 function Get-PipelineVariables {
     return @{
-        ReleaseName = $env:RELEASE_RELEASENAME ?? "$(Release.ReleaseName)"
-        EnvironmentName = $env:RELEASE_ENVIRONMENTNAME ?? "$(Release.EnvironmentName)"
-        RequestedBy = $env:RELEASE_REQUESTEDFOR ?? "$(Release.RequestedFor)"
-        ProjectName = $env:SYSTEM_TEAMPROJECT ?? "$(System.TeamProject)"
-        ReleaseUrl = $env:RELEASE_RELEASEWEBURL ?? "$(Release.ReleaseWebURL)"
+      
+
+        ReleaseName = if ($env:RELEASE_RELEASENAME) { $env:RELEASE_RELEASENAME } else { "$(Release.ReleaseName)" }
+        EnvironmentName = if ($env:RELEASE_ENVIRONMENTNAME) { $env:RELEASE_ENVIRONMENTNAME } else { "$(Release.EnvironmentName)" }
+        RequestedBy = if ($env:RELEASE_REQUESTEDFOR) { $env:RELEASE_REQUESTEDFOR } else { "$(Release.RequestedFor)" }
+        ProjectName = if ($env:SYSTEM_TEAMPROJECT) { $env:SYSTEM_TEAMPROJECT } else { "$(System.TeamProject)" }
+        ReleaseUrl = if ($env:RELEASE_RELEASEWEBURL) { $env:RELEASE_RELEASEWEBURL } else { "$(Release.ReleaseWebURL)" }
+
     }
 }
 
