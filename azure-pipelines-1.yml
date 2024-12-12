@@ -1,0 +1,17 @@
+trigger:
+- main  # Adjust the branch name if necessary
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: PowerShell@2
+  inputs:
+    filePath: 'Send-TeamsNotification.ps1'  # Path to your script in the repository
+    arguments: ''
+    failOnStderr: true
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: '$(System.DefaultWorkingDirectory)/Send-TeamsNotification.ps1'
+    ArtifactName: 'Scripts'
